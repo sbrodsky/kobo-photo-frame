@@ -7,8 +7,10 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -21,6 +23,9 @@ public class ScreenSnap {
     private static boolean altPressed = false;
     private static boolean waitingForSecondHotkey = false;
     private static SelectionOverlay activeOverlay = null;
+
+    private static final int KOBO_WIDTH = 1072;
+    private static final int KOBO_HEIGHT = 1448;
 
     public static void main(String[] args) throws Exception {
         System.setProperty("apple.awt.UIElement", "true");
@@ -129,10 +134,45 @@ public class ScreenSnap {
 
     private static Rectangle getVirtualScreenBounds() {
         Rectangle bounds = new Rectangle();
-        for (GraphicsDevice gd : GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()) {
-            bounds = bounds.union(gd.getDefaultConfiguration().getBounds());
+        GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+
+        for (GraphicsDevice gd : ge.getScreenDevices()) {
+            GraphicsConfiguration gc = gd.getDefaultConfiguration();
+            Rectangle logicalBounds = gc.getBounds();
+            AffineTransform transform = gc.getDefaultTransform();
+
+            int x = (int) Math.round(logicalBounds.x * transform.getScaleX());
+            int y = (int) Math.round(logicalBounds.y * transform.getScaleY());
+            int w = (int) Math.round(logicalBounds.width * transform.getScaleX());
+            int h = (int) Math.round(logicalBounds.height * transform.getScaleY());
+
+            bounds = bounds.union(new Rectangle(x, y, w, h));
         }
+
         return bounds;
+    }
+
+    private static BufferedImage resizeToKoboDimensions(BufferedImage source) {
+        BufferedImage resized = new BufferedImage(KOBO_WIDTH, KOBO_HEIGHT, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = resized.createGraphics();
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        int sourceWidth = source.getWidth();
+        int sourceHeight = source.getHeight();
+        double scale = Math.max((double) KOBO_WIDTH / sourceWidth, (double) KOBO_HEIGHT / sourceHeight);
+
+        int targetWidth = (int) Math.round(sourceWidth * scale);
+        int targetHeight = (int) Math.round(sourceHeight * scale);
+        int x = (KOBO_WIDTH - targetWidth) / 2;
+        int y = (KOBO_HEIGHT - targetHeight) / 2;
+
+        g2.setColor(Color.WHITE);
+        g2.fillRect(0, 0, KOBO_WIDTH, KOBO_HEIGHT);
+        g2.drawImage(source, x, y, targetWidth, targetHeight, null);
+        g2.dispose();
+        return resized;
     }
 
     // -----------------------------------------------------------------------
@@ -331,6 +371,7 @@ public class ScreenSnap {
             try {
                 Robot robot = new Robot();
                 BufferedImage capture = robot.createScreenCapture(screenRect);
+                BufferedImage normalizedCapture = resizeToKoboDimensions(capture);
 
                 String ts = LocalDateTime.now()
                         .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
@@ -340,7 +381,8 @@ public class ScreenSnap {
                 }
                 File out = new File(downloadsDir, "ScreenSnap_" + ts + ".png");
 
-                ImageIO.write(capture, "PNG", out);
+                ImageIO.write(normalizedCapture, "PNG", out);
+                System.out.println("[ScreenSnap] captured " + capture.getWidth() + "x" + capture.getHeight() + " and saved " + normalizedCapture.getWidth() + "x" + normalizedCapture.getHeight() + " to " + out.getAbsolutePath());
 
                 if (SystemTray.isSupported() && trayIcon != null) {
                     // Use the existing tray icon to display a non-blocking notification

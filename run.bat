@@ -1,1 +1,1 @@
-java -jar "c:\main\screensnap\target\ScreenSnap.jar"
+java -jar "d:\main\screensnap\target\screensnap.jar"
