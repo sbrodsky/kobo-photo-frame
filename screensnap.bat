@@ -1,1 +1,1 @@
-java -jar "d:\main\screensnap\target\ScreenSnap.jar"
+java -jar "d:\main\kobo-photo-frame\target\ScreenSnap.jar"
